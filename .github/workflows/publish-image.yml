@@ -2,7 +2,7 @@ name: Publish image
 
 on:
   push:
-    branches: [release-image]
+    branches: [preview-image-with-org-selector-fixed]
   workflow_dispatch:
 
 permissions:
