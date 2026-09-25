@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/ucndanny/keycloak:latest
+  IMAGE: ghcr.io/ucndanny/keycloak-preview:latest
 
 jobs:
   publish:
@@ -36,9 +36,11 @@ jobs:
           cp ../dist/target/keycloak-*.tar.gz .
           DIST=$(ls keycloak-*.tar.gz)
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker build \
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          docker buildx create --use
+          docker buildx build --push \
+            --platform linux/amd64,linux/arm64 \
             --build-arg KEYCLOAK_DIST="$DIST" \
             --label org.opencontainers.image.source=https://github.com/UCNDanny/keycloak \
             --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
             -t "$IMAGE" .
-          docker push "$IMAGE"
