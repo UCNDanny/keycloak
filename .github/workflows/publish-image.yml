@@ -11,6 +11,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/ucndanny/keycloak-preview:latest
+  HARDENED_IMAGE: ghcr.io/ucndanny/keycloak-preview-hardened:latest
 
 jobs:
   publish:
@@ -21,6 +22,17 @@ jobs:
         with:
           ref: main
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: release
+
+      - name: Check out kreutzmann-img for hardening pins and scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: UCNDanny/kreutzmann-img
+          ref: main
+          path: kimg
+
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -30,17 +42,55 @@ jobs:
       - name: Build server distribution
         run: ./mvnw -B -nsu -pl quarkus/deployment,quarkus/dist -am -DskipTests -DskipProtoLock=true clean install
 
+      - name: Set up multi-platform builds
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          docker buildx create --use
+
       - name: Build and push image
         working-directory: quarkus/container
         run: |
           cp ../dist/target/keycloak-*.tar.gz .
           DIST=$(ls keycloak-*.tar.gz)
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker run --privileged --rm tonistiigi/binfmt --install arm64
-          docker buildx create --use
           docker buildx build --push \
             --platform linux/amd64,linux/arm64 \
             --build-arg KEYCLOAK_DIST="$DIST" \
             --label org.opencontainers.image.source=https://github.com/UCNDanny/keycloak \
             --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
             -t "$IMAGE" .
+
+      - name: Prepare hardened build
+        id: hardened
+        run: |
+          set -euo pipefail
+          ctx=hardened-ctx
+          mkdir "$ctx"
+          cp quarkus/dist/target/keycloak-*.tar.gz "$ctx/keycloak.tar.gz"
+          cp release/hardened/Dockerfile kimg/scripts/KeycloakLauncher.java kimg/scripts/keycloak-java.options "$ctx/"
+          python3 - <<'EOF' > build-args.txt
+          import json
+          d = json.load(open('kimg/dependencies.lock.json'))
+          args = {'CA_IMAGE': d['bases']['ca'], 'UBI_IMAGE': d['bases']['ubi'], 'JAVA_IMAGE': d['bases']['java']}
+          for name, p in d['bcfips'].items():
+              key = name.replace('-', '_').upper()
+              args[key + '_URL'], args[key + '_SHA256'] = p['url'], p['sha256']
+          for k, v in args.items():
+              print(f'--build-arg={k}={v}')
+          EOF
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test hardened image under runtime restrictions
+        run: |
+          set -euo pipefail
+          mapfile -t args < build-args.txt
+          docker buildx build --load --platform linux/amd64 "${args[@]}" -t keycloak-hardened:smoke hardened-ctx
+          python3 kimg/scripts/smoke.py keycloak keycloak-hardened:smoke
+
+      - name: Build and push hardened image
+        run: |
+          set -euo pipefail
+          mapfile -t args < build-args.txt
+          docker buildx build --push --platform linux/amd64,linux/arm64 "${args[@]}" \
+            --label org.opencontainers.image.revision="${{ steps.hardened.outputs.revision }}" \
+            -t "$HARDENED_IMAGE" hardened-ctx
