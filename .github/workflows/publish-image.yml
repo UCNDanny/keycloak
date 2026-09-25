@@ -1,0 +1,44 @@
+name: Publish image
+
+on:
+  push:
+    branches: [release-image]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/ucndanny/keycloak:latest
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Build server distribution
+        run: ./mvnw -B -nsu -pl quarkus/deployment,quarkus/dist -am -DskipTests -DskipProtoLock=true clean install
+
+      - name: Build and push image
+        working-directory: quarkus/container
+        run: |
+          cp ../dist/target/keycloak-*.tar.gz .
+          DIST=$(ls keycloak-*.tar.gz)
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build \
+            --build-arg KEYCLOAK_DIST="$DIST" \
+            --label org.opencontainers.image.source=https://github.com/UCNDanny/keycloak \
+            --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
+            -t "$IMAGE" .
+          docker push "$IMAGE"
