@@ -63,11 +63,7 @@ export default function DetailOrganization() {
   };
 
   useFetch(
-    () =>
-      adminClient.organizations.findOne({ id }) as Promise<
-        | Awaited<ReturnType<typeof adminClient.organizations.findOne>>
-        | undefined
-      >,
+    () => adminClient.organizations.findOne({ id }),
     (org) => {
       if (!org) {
         throw new Error(t("notFound"));

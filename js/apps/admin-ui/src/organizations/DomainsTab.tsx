@@ -63,6 +63,7 @@ const DomainModal = ({ orgId, domain, onClose }: DomainModalProps) => {
   const submitForm = async (data: OrganizationDomainRepresentation) => {
     try {
       const org = await adminClient.organizations.findOne({ id: orgId });
+      if (!org) throw new Error(t("notFound"));
       const domains = org.domains ?? [];
       const payload = {
         verified: data.verified,
@@ -178,6 +179,7 @@ export const DomainsTab = () => {
 
   const loader = async () => {
     const org = await adminClient.organizations.findOne({ id: orgId! });
+    if (!org) throw new Error(t("notFound"));
     return org.domains ?? [];
   };
 
@@ -189,6 +191,7 @@ export const DomainsTab = () => {
     onConfirm: async () => {
       try {
         const org = await adminClient.organizations.findOne({ id: orgId! });
+        if (!org) throw new Error(t("notFound"));
         const domains = (org.domains ?? []).filter(
           (d) => d.name !== selectedDomain?.name,
         );
