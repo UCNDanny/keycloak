@@ -163,7 +163,11 @@ const DomainModal = ({ orgId, domain, onClose }: DomainModalProps) => {
   );
 };
 
-export const DomainsTab = () => {
+type DomainsTabProps = {
+  canManage: boolean;
+};
+
+export const DomainsTab = ({ canManage }: DomainsTabProps) => {
   const { adminClient } = useAdminClient();
   const { t } = useTranslation();
   const { id: orgId } = useParams<EditOrganizationParams>();
@@ -228,44 +232,53 @@ export const DomainsTab = () => {
         ariaLabelKey="domains"
         searchPlaceholderKey="searchDomain"
         toolbarItem={
-          <ToolbarItem>
-            <Button onClick={() => setDomainModalOpen(true)}>
-              {t("addDomain")}
-            </Button>
-          </ToolbarItem>
+          canManage && (
+            <ToolbarItem>
+              <Button onClick={() => setDomainModalOpen(true)}>
+                {t("addDomain")}
+              </Button>
+            </ToolbarItem>
+          )
         }
-        actions={[
-          {
-            title: t("edit"),
-            onRowClick: (row) => {
-              setEditingDomain(row);
-              setDomainModalOpen(true);
-            },
-          },
-          {
-            title: t("delete"),
-            onRowClick: (row) => {
-              setSelectedDomain(row);
-              toggleDeleteDialog();
-            },
-          },
-        ]}
+        actions={
+          canManage
+            ? [
+                {
+                  title: t("edit"),
+                  onRowClick: (row) => {
+                    setEditingDomain(row);
+                    setDomainModalOpen(true);
+                  },
+                },
+                {
+                  title: t("delete"),
+                  onRowClick: (row) => {
+                    setSelectedDomain(row);
+                    toggleDeleteDialog();
+                  },
+                },
+              ]
+            : undefined
+        }
         columns={[
           {
             name: "name",
             displayKey: "domain",
-            cellRenderer: (row) => (
-              <Button
-                variant="link"
-                isInline
-                onClick={() => {
-                  setEditingDomain(row);
-                  setDomainModalOpen(true);
-                }}
-              >
-                {row.name}
-              </Button>
-            ),
+            cellRenderer: (row) =>
+              !canManage ? (
+                (row.name ?? "")
+              ) : (
+                <Button
+                  variant="link"
+                  isInline
+                  onClick={() => {
+                    setEditingDomain(row);
+                    setDomainModalOpen(true);
+                  }}
+                >
+                  {row.name}
+                </Button>
+              ),
           },
           {
             name: "identityProviderAlias",
@@ -282,7 +295,7 @@ export const DomainsTab = () => {
           <ListEmptyState
             message={t("emptyDomains")}
             instructions={t("emptyDomainsInstructions")}
-            primaryActionText={t("addDomain")}
+            primaryActionText={canManage ? t("addDomain") : undefined}
             onPrimaryAction={() => setDomainModalOpen(true)}
           />
         }

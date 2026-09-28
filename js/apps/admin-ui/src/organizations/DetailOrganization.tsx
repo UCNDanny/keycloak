@@ -11,6 +11,7 @@ import {
   Tabs,
   TabTitleText,
 } from "@patternfly/react-core";
+import { NetworkError } from "@keycloak/keycloak-admin-client";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useAdminClient } from "../admin-client";
@@ -39,6 +40,7 @@ import {
   toEditOrganization,
 } from "./routes/EditOrganization";
 import { useAccess } from "../context/access/Access";
+import { ForbiddenSection } from "../ForbiddenSection";
 import { AdminEvents } from "../events/AdminEvents";
 import { useState } from "react";
 
@@ -51,6 +53,8 @@ export default function DetailOrganization() {
   const { t } = useTranslation();
 
   const form = useForm<OrganizationFormType>();
+  const [canManage, setCanManage] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
 
   const save = async (org: OrganizationFormType) => {
     try {
@@ -63,11 +67,25 @@ export default function DetailOrganization() {
   };
 
   useFetch(
-    () => adminClient.organizations.findOne({ id }),
+    async () => {
+      try {
+        return await adminClient.organizations.findOne({ id });
+      } catch (error) {
+        if (error instanceof NetworkError && error.response.status === 403) {
+          setForbidden(true);
+          return null;
+        }
+        throw error;
+      }
+    },
     (org) => {
+      if (org === null) {
+        return;
+      }
       if (!org) {
         throw new Error(t("notFound"));
       }
+      setCanManage(org.access?.manage ?? false);
       form.reset({
         ...org,
         domains: undefined,
@@ -98,10 +116,17 @@ export default function DetailOrganization() {
   const { hasAccess } = useAccess();
   const [activeEventsTab, setActiveEventsTab] = useState("adminEvents");
 
+  if (forbidden) {
+    return <ForbiddenSection permissionNeeded="view-organizations" />;
+  }
+
   return (
     <PageSection variant="light" className="pf-v5-u-p-0">
       <FormProvider {...form}>
-        <DetailOrganizationHeader save={() => save(form.getValues())} />
+        <DetailOrganizationHeader
+          save={() => save(form.getValues())}
+          canManage={canManage}
+        />
         <RoutableTabs
           data-testid="organization-tabs"
           aria-label={t("organization")}
@@ -117,25 +142,28 @@ export default function DetailOrganization() {
             <PageSection>
               <FormAccess
                 role="anyone"
+                isReadOnly={!canManage}
                 onSubmit={form.handleSubmit(save)}
                 isHorizontal
               >
-                <OrganizationForm readOnly />
-                <ActionGroup>
-                  <FormSubmitButton
-                    formState={form.formState}
-                    data-testid="save"
-                  >
-                    {t("save")}
-                  </FormSubmitButton>
-                  <Button
-                    onClick={() => form.reset()}
-                    data-testid="reset"
-                    variant="link"
-                  >
-                    {t("reset")}
-                  </Button>
-                </ActionGroup>
+                <OrganizationForm readOnly isDisabled={!canManage} />
+                {canManage && (
+                  <ActionGroup>
+                    <FormSubmitButton
+                      formState={form.formState}
+                      data-testid="save"
+                    >
+                      {t("save")}
+                    </FormSubmitButton>
+                    <Button
+                      onClick={() => form.reset()}
+                      data-testid="reset"
+                      variant="link"
+                    >
+                      {t("reset")}
+                    </Button>
+                  </ActionGroup>
+                )}
               </FormAccess>
             </PageSection>
           </Tab>
@@ -145,7 +173,7 @@ export default function DetailOrganization() {
             title={<TabTitleText>{t("domains")}</TabTitleText>}
             {...domainsTab}
           >
-            <DomainsTab />
+            <DomainsTab canManage={canManage} />
           </Tab>
           <Tab
             id="attributes"
@@ -156,12 +184,17 @@ export default function DetailOrganization() {
             <PageSection variant="light">
               <AttributesForm
                 form={form}
-                save={save}
-                reset={() =>
-                  form.reset({
-                    ...form.getValues(),
-                  })
+                save={canManage ? save : undefined}
+                reset={
+                  canManage
+                    ? () =>
+                        form.reset({
+                          ...form.getValues(),
+                        })
+                    : undefined
                 }
+                fineGrainedAccess={canManage}
+                isDisabled={!canManage}
                 name="attributes"
               />
             </PageSection>
@@ -172,7 +205,7 @@ export default function DetailOrganization() {
             title={<TabTitleText>{t("members")}</TabTitleText>}
             {...membersTab}
           >
-            <MembersSection />
+            <MembersSection canManage={canManage} />
           </Tab>
           <Tab
             id="groups"
@@ -188,7 +221,7 @@ export default function DetailOrganization() {
             title={<TabTitleText>{t("identityProviders")}</TabTitleText>}
             {...identityProvidersTab}
           >
-            <IdentityProviders />
+            <IdentityProviders canManage={canManage} />
           </Tab>
           {realmRepresentation.adminEventsEnabled &&
             hasAccess("view-events") && (

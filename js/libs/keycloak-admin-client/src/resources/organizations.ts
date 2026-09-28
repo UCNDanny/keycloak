@@ -6,6 +6,7 @@ import type OrganizationInvitationRepresentation from "../defs/organizationInvit
 import Resource from "./resource.js";
 import { Groups } from "./groups.js";
 import OrganizationMemberRepresentation from "../defs/organizationMemberRepresentation.js";
+import type UserRepresentation from "../defs/userRepresentation.js";
 
 interface PaginatedQuery {
   first?: number; // The position of the first result to be processed (pagination offset)
@@ -115,6 +116,16 @@ export class Organizations extends Resource<{ realm?: string }> {
     path: "/{orgId}/members",
     urlParamKeys: ["orgId"],
     payloadKey: "userId",
+  });
+
+  public createManagedMember = this.makeRequest<
+    { orgId: string } & UserRepresentation,
+    { id: string }
+  >({
+    method: "POST",
+    path: "/{orgId}/members/managed",
+    urlParamKeys: ["orgId"],
+    returnResourceIdInLocationHeader: { field: "id" },
   });
 
   public delMember = this.makeRequest<

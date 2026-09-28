@@ -16,6 +16,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAdminClient } from "../admin-client";
 import { useConfirmDialog } from "../components/confirm-dialog/ConfirmDialog";
 import { ViewHeader } from "../components/view-header/ViewHeader";
+import { useAccess } from "../context/access/Access";
 import { useRealm } from "../context/realm-context/RealmContext";
 import { toEditOrganization } from "../organizations/routes/EditOrganization";
 import { toAddOrganization } from "./routes/AddOrganization";
@@ -26,6 +27,8 @@ export default function OrganizationSection() {
   const { t } = useTranslation();
   const { addAlert, addError } = useAlerts();
   const navigate = useNavigate();
+  const { hasAccess } = useAccess();
+  const isManager = hasAccess("manage-organizations");
 
   const [key, setKey] = useState(0);
   const refresh = () => setKey(key + 1);
@@ -81,26 +84,32 @@ export default function OrganizationSection() {
           searchPlaceholderKey="searchOrganization"
           isPaginated
           toolbarItem={
-            <ToolbarItem>
-              <Button
-                data-testid="addOrganization"
-                component={(props) => (
-                  <Link {...props} to={toAddOrganization({ realm })} />
-                )}
-              >
-                {t("createOrganization")}
-              </Button>
-            </ToolbarItem>
+            isManager && (
+              <ToolbarItem>
+                <Button
+                  data-testid="addOrganization"
+                  component={(props) => (
+                    <Link {...props} to={toAddOrganization({ realm })} />
+                  )}
+                >
+                  {t("createOrganization")}
+                </Button>
+              </ToolbarItem>
+            )
           }
-          onDelete={(org) => {
-            setSelectedOrg(org);
-            toggleDeleteDialog();
-          }}
+          onDelete={
+            isManager
+              ? (org) => {
+                  setSelectedOrg(org);
+                  toggleDeleteDialog();
+                }
+              : undefined
+          }
         >
           <ListEmptyState
             message={t("emptyOrganizations")}
             instructions={t("emptyOrganizationsInstructions")}
-            primaryActionText={t("createOrganization")}
+            primaryActionText={isManager ? t("createOrganization") : undefined}
             onPrimaryAction={() => void navigate(toAddOrganization({ realm }))}
           />
         </OrganizationTable>

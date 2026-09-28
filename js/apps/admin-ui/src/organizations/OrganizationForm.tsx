@@ -38,11 +38,13 @@ export const convertToOrg = (
 type OrganizationFormProps = {
   readOnly?: boolean;
   showDomains?: boolean;
+  isDisabled?: boolean;
 };
 
 export const OrganizationForm = ({
   readOnly = false,
   showDomains = false,
+  isDisabled = false,
 }: OrganizationFormProps) => {
   const { t } = useTranslation();
   const {
@@ -63,12 +65,13 @@ export const OrganizationForm = ({
         label={t("name")}
         name="name"
         rules={{ required: t("required") }}
+        isDisabled={isDisabled}
       />
       <TextControl
         label={t("alias")}
         name="alias"
         labelIcon={t("organizationAliasHelp")}
-        isDisabled={readOnly}
+        isDisabled={readOnly || isDisabled}
       />
       {showDomains && (
         <FormGroup
@@ -86,6 +89,7 @@ export const OrganizationForm = ({
             name="domains"
             aria-label={t("domain")}
             addButtonLabel="addDomain"
+            isDisabled={isDisabled}
           />
           {errors["domains"]?.message && (
             <FormErrorText message={errors["domains"].message.toString()} />
@@ -96,8 +100,13 @@ export const OrganizationForm = ({
         label={t("redirectUrl")}
         name="redirectUrl"
         labelIcon={t("organizationRedirectUrlHelp")}
+        isDisabled={isDisabled}
       />
-      <TextAreaControl name="description" label={t("description")} />
+      <TextAreaControl
+        name="description"
+        label={t("description")}
+        isDisabled={isDisabled}
+      />
     </>
   );
 };

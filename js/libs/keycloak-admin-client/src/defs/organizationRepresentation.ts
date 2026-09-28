@@ -13,4 +13,5 @@ export default interface OrganizationRepresentation {
   domains?: OrganizationDomainRepresentation[];
   members?: MemberRepresentation[];
   identityProviders?: IdentityProviderRepresentation[];
+  access?: Record<string, boolean>;
 }

@@ -17,6 +17,7 @@
 
 package org.keycloak.organization.admin.resource;
 
+import java.util.Map;
 import java.util.Objects;
 
 import jakarta.ws.rs.Consumes;
@@ -85,7 +86,13 @@ public class OrganizationResource {
         @APIResponse(responseCode = "403", description = "Forbidden")
     })
     public OrganizationRepresentation get() {
-        return ModelToRepresentation.toRepresentation(organization, false);
+        return toRepresentation(organization, false, auth);
+    }
+
+    static OrganizationRepresentation toRepresentation(OrganizationModel organization, boolean briefRepresentation, AdminPermissionEvaluator auth) {
+        OrganizationRepresentation rep = ModelToRepresentation.toRepresentation(organization, briefRepresentation);
+        rep.setAccess(Map.of("view", auth.orgs().canView(organization), "manage", auth.orgs().canManage(organization)));
+        return rep;
     }
 
     @DELETE

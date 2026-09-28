@@ -234,9 +234,8 @@ public class JpaOrganizationProvider implements OrganizationProvider {
         throwExceptionIfObjectIsNull(organization, "Organization");
         throwExceptionIfObjectIsNull(user, "User");
 
-        if (MembershipType.MANAGED.equals(metadata.getMembershipType())) {
-            throwIfManagedByAnotherOrg(organization, user);
-        }
+        // a managed member is owned by its organization and cannot join any other organization
+        throwIfManagedByAnotherOrg(organization, user);
 
         OrganizationEntity entity = getEntity(organization.getId());
         OrganizationModel current = Organizations.resolveOrganization(session);

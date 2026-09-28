@@ -42,7 +42,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ModelDuplicateException;
 import org.keycloak.models.ModelValidationException;
 import org.keycloak.models.OrganizationModel;
-import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.organization.OrganizationProvider;
 import org.keycloak.organization.utils.Organizations;
@@ -168,15 +167,15 @@ public class OrganizationsResource {
 
         if (StringUtil.isNotBlank(identityProviderAlias)) {
             return provider.getByIdentityProvider(resolveIdentityProvider(identityProviderAlias, searchQuery), search, exact, first, max)
-                    .map(model -> ModelToRepresentation.toRepresentation(model, briefRepresentation));
+                    .map(model -> OrganizationResource.toRepresentation(model, briefRepresentation, auth));
         }
 
         // check if are searching orgs by attribute.
         if (StringUtil.isNotBlank(searchQuery)) {
             Map<String, String> attributes = SearchQueryUtils.getFields(searchQuery);
-            return provider.getAllStream(attributes, first, max).map(model -> ModelToRepresentation.toRepresentation(model, briefRepresentation));
+            return provider.getAllStream(attributes, first, max).map(model -> OrganizationResource.toRepresentation(model, briefRepresentation, auth));
         } else {
-            return provider.getAllStream(search, exact, first, max).map(model -> ModelToRepresentation.toRepresentation(model, briefRepresentation));
+            return provider.getAllStream(search, exact, first, max).map(model -> OrganizationResource.toRepresentation(model, briefRepresentation, auth));
         }
     }
 

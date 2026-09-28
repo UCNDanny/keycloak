@@ -18,6 +18,7 @@
 package org.keycloak.organization.admin.resource;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -42,6 +43,7 @@ import org.keycloak.authorization.fgap.AdminPermissionsSchema;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.ModelDuplicateException;
 import org.keycloak.models.ModelException;
 import org.keycloak.models.OrganizationModel;
 import org.keycloak.models.RealmModel;
@@ -53,10 +55,14 @@ import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.MemberRepresentation;
 import org.keycloak.representations.idm.MembershipType;
 import org.keycloak.representations.idm.OrganizationRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.services.ErrorResponse;
 import org.keycloak.services.resources.KeycloakOpenAPI;
 import org.keycloak.services.resources.admin.AdminEventBuilder;
+import org.keycloak.services.resources.admin.UserResource;
 import org.keycloak.services.resources.admin.fgap.AdminPermissionEvaluator;
+import org.keycloak.userprofile.UserProfile;
+import org.keycloak.userprofile.UserProfileProvider;
 import org.keycloak.utils.StringUtil;
 
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -70,6 +76,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.resteasy.reactive.NoCache;
+
+import static org.keycloak.userprofile.UserProfileContext.USER_API;
 
 @Extension(name = KeycloakOpenAPI.Profiles.ADMIN, value = "")
 public class OrganizationMemberResource {
@@ -128,6 +136,73 @@ public class OrganizationMemberResource {
         throw ErrorResponse.error("User is already a member of the organization.", Status.CONFLICT);
     }
 
+    /**
+     * Precondition: caller must have passed through {@link OrganizationsResource#get(String)}
+     * which enforces {@code auth.orgs().requireView(organization)}. This method additionally
+     * requires {@code auth.orgs().requireManage(organization)}. No realm-wide user permission is required,
+     * as the new user is owned by the organization as a managed member.
+     */
+    @Path("managed")
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Tag(name = KeycloakOpenAPI.Admin.Tags.ORGANIZATIONS)
+    @Operation(summary = "Creates a new user as a managed member of the organization", description = "Creates a new user " +
+            "and adds it as a managed member of the organization. Only the username, email, first name, last name, and enabled " +
+            "fields of the representation are taken into account. A managed member cannot join any other organization.")
+    @RequestBody(description = "The user to be created", required = true)
+    @APIResponses(value = {
+        @APIResponse(responseCode = "201", description = "Created"),
+        @APIResponse(responseCode = "400", description = "Bad Request"),
+        @APIResponse(responseCode = "403", description = "Forbidden"),
+        @APIResponse(responseCode = "409", description = "Conflict")
+    })
+    public Response createManagedMember(UserRepresentation rep) {
+        auth.orgs().requireManage(organization);
+
+        if (rep == null) {
+            throw ErrorResponse.error("User representation cannot be null", Status.BAD_REQUEST);
+        }
+
+        if (!organization.isEnabled()) {
+            throw ErrorResponse.error("Organization is disabled", Status.BAD_REQUEST);
+        }
+
+        // only accept the basic fields so that an organization admin cannot set credentials, groups, roles, or custom attributes
+        UserRepresentation sanitized = new UserRepresentation();
+        sanitized.setUsername(rep.getUsername());
+        sanitized.setEmail(rep.getEmail());
+        sanitized.setFirstName(rep.getFirstName());
+        sanitized.setLastName(rep.getLastName());
+        sanitized.setEnabled(rep.isEnabled() == null ? Boolean.TRUE : rep.isEnabled());
+
+        UserProfile profile = session.getProvider(UserProfileProvider.class).create(USER_API, sanitized.getRawAttributes());
+
+        try {
+            UserResource.validateUserProfile(profile, session, auth.adminAuth());
+            UserModel user = profile.create();
+            UserResource.updateUserFromRep(profile, user, sanitized, session, false);
+
+            if (!provider.addManagedMember(organization, user)) {
+                throw ErrorResponse.error("Could not add user as a managed member of the organization", Status.BAD_REQUEST);
+            }
+
+            adminEvent.operation(OperationType.CREATE).resource(ResourceType.ORGANIZATION_MEMBERSHIP)
+                    .representation(ModelToRepresentation.toRepresentation(organization))
+                    .resourcePath(session.getContext().getUri())
+                    .detail(UserModel.USERNAME, user.getUsername())
+                    .detail(UserModel.EMAIL, user.getEmail())
+                    .detail(MembershipType.NAME, MembershipType.MANAGED.name())
+                    .success();
+
+            // resolves the location relative to the members collection (.../members/{member-id})
+            return Response.created(session.getContext().getUri().getAbsolutePath().resolve(user.getId())).build();
+        } catch (ModelDuplicateException e) {
+            throw ErrorResponse.exists("User exists with same username or email");
+        } catch (ModelException me) {
+            throw ErrorResponse.error(me.getMessage(), Status.BAD_REQUEST);
+        }
+    }
+
     @Path("invite-user")
     @POST
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -169,7 +244,8 @@ public class OrganizationMemberResource {
     /**
      * Precondition: caller must have passed through {@link OrganizationsResource#get(String)}
      * which enforces {@code auth.orgs().requireView(organization)}. This method additionally
-     * requires {@code auth.users().requireQuery()}.
+     * requires either {@code auth.users().canQuery()}, in which case results are filtered by user permissions,
+     * or {@code auth.orgs().canManage(organization)}, in which case all members of the organization are returned.
      */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -189,10 +265,14 @@ public class OrganizationMemberResource {
             @Parameter(description = "Boolean to return either a brief or a full user representation. If not specified, the brief representation is returned by default.")
             @QueryParam("briefRepresentation") @DefaultValue("true") boolean briefRepresentation
     ) {
-        auth.users().requireQuery();
+        boolean canQueryUsers = auth.users().canQuery();
+
+        if (!canQueryUsers && !canManageMembers()) {
+            throw new ForbiddenException();
+        }
 
         // if a dedicated admin can query, but cannot view (and FGAP is not enabled) - we can return empty list right away to save a roundtrip to the DB
-        if (!AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(realm) && !auth.users().canView()) {
+        if (canQueryUsers && !AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(realm) && !auth.users().canView()) {
             return Stream.empty();
         }
 
@@ -206,13 +286,21 @@ public class OrganizationMemberResource {
             filters.put(MembershipType.NAME, MembershipType.valueOf(membershipType.toUpperCase()).name());
         }
 
-        return provider.getMembersStream(organization, filters, exact, first, max).map(m -> toRepresentation(m, briefRepresentation));
+        if (canQueryUsers) {
+            return provider.getMembersStream(organization, filters, exact, first, max).map(m -> toRepresentation(m, briefRepresentation));
+        }
+
+        // organization admins see all members of the organization regardless of user permissions
+        List<UserModel> members = AdminPermissionsSchema.runWithoutAuthorization(session,
+                () -> provider.getMembersStream(organization, filters, exact, first, max).toList());
+
+        return members.stream().map(m -> toRepresentation(m, briefRepresentation));
     }
 
     /**
      * Precondition: caller must have passed through {@link OrganizationsResource#get(String)}
      * which enforces {@code auth.orgs().requireView(organization)}. This method additionally
-     * requires {@code auth.users().requireView(member)}.
+     * requires {@code auth.users().canView(member)} or {@code auth.orgs().canManage(organization)}.
      */
     @Path("{member-id}")
     @GET
@@ -233,10 +321,16 @@ public class OrganizationMemberResource {
         }
 
         UserModel member = getMember(memberId);
-        auth.users().requireView(member);
+        requireViewMember(member);
         return toRepresentation(member, false);
     }
 
+    /**
+     * Requires {@code auth.orgs().requireManage(organization)}. Releasing a member (switching to
+     * {@link MembershipType#UNMANAGED}) additionally requires {@code auth.users().canManage(member)} or
+     * {@code auth.orgs().canManage(organization)}. Switching to {@link MembershipType#MANAGED} additionally
+     * requires {@code auth.users().requireManage(member)}.
+     */
     @Path("{member-id}/membership-type")
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
@@ -258,7 +352,11 @@ public class OrganizationMemberResource {
         }
 
         UserModel member = getMember(memberId);
-        auth.users().requireManage(member);
+        if (MembershipType.MANAGED.equals(membershipType)) {
+            auth.users().requireManage(member);
+        } else {
+            requireManageMember(member);
+        }
 
         MembershipType currentType = provider.isManagedMember(organization, member) ? MembershipType.MANAGED : MembershipType.UNMANAGED;
         if (membershipType.equals(currentType)) {
@@ -283,6 +381,10 @@ public class OrganizationMemberResource {
         throw ErrorResponse.error("Not a member of the organization", Status.NOT_FOUND);
     }
 
+    /**
+     * Requires {@code auth.orgs().requireManage(organization)} and additionally
+     * {@code auth.users().canManage(member)} or {@code auth.orgs().canManage(organization)}.
+     */
     @Path("{member-id}")
     @DELETE
     @Tag(name = KeycloakOpenAPI.Admin.Tags.ORGANIZATIONS)
@@ -301,7 +403,7 @@ public class OrganizationMemberResource {
         }
 
         UserModel member = getMember(memberId);
-        auth.users().requireManage(member);
+        requireManageMember(member);
 
         if (provider.removeMember(organization, member)) {
             adminEvent.operation(OperationType.DELETE).resource(ResourceType.ORGANIZATION_MEMBERSHIP)
@@ -360,7 +462,7 @@ public class OrganizationMemberResource {
     /**
      * Precondition: caller must have passed through {@link OrganizationsResource#get(String)}
      * which enforces {@code auth.orgs().requireView(organization)}. This method additionally
-     * requires {@code auth.users().requireView(member)}.
+     * requires {@code auth.users().canView(member)} or {@code auth.orgs().canManage(organization)}.
      */
     @Path("{member-id}/groups")
     @GET
@@ -385,7 +487,7 @@ public class OrganizationMemberResource {
         }
 
         UserModel member = getMember(memberId);
-        auth.users().requireView(member);
+        requireViewMember(member);
 
         return provider.getOrganizationGroupsByMember(organization, member, search, firstResult, maxResults)
                 .map(group -> ModelToRepresentation.toRepresentation(group, !briefRepresentation));
@@ -394,7 +496,8 @@ public class OrganizationMemberResource {
     /**
      * Precondition: caller must have passed through {@link OrganizationsResource#get(String)}
      * which enforces {@code auth.orgs().requireView(organization)}. This method additionally
-     * requires {@code auth.users().requireQuery()}.
+     * requires either {@code auth.users().canQuery()}, in which case the count is filtered by user permissions,
+     * or {@code auth.orgs().canManage(organization)}, in which case all members of the organization are counted.
      */
     @Path("count")
     @GET
@@ -407,24 +510,51 @@ public class OrganizationMemberResource {
         @APIResponse(responseCode = "403", description = "Forbidden")
     })
     public Long count() {
-        auth.users().requireQuery();
+        if (auth.users().canQuery()) {
+            // if a dedicated admin can query, but cannot view (and FGAP is not enabled) - we can return 0L right away to save a roundtrip to the DB
+            if (!AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(realm) && !auth.users().canView()) {
+                return 0L;
+            }
 
-        // if a dedicated admin can query, but cannot view (and FGAP is not enabled) - we can return 0L right away to save a roundtrip to the DB
-        if (!AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(realm) && !auth.users().canView()) {
-            return 0L;
+            return provider.getMembersCount(organization);
         }
 
-        return provider.getMembersCount(organization);
+        if (!canManageMembers()) {
+            throw new ForbiddenException();
+        }
+
+        // organization admins count all members of the organization regardless of user permissions
+        return AdminPermissionsSchema.runWithoutAuthorization(session, () -> provider.getMembersCount(organization));
     }
 
     private UserModel getMember(String id) {
         UserModel member = provider.getMemberById(organization, id);
 
         if (member == null) {
-            throw (auth.users().canQuery()) ? new NotFoundException() : new ForbiddenException();
+            throw (auth.users().canQuery() || canManageMembers()) ? new NotFoundException() : new ForbiddenException();
         }
 
         return member;
+    }
+
+    /**
+     * Organization admins are granted access to the members of the organization they manage, without requiring
+     * realm-wide user permissions.
+     */
+    private boolean canManageMembers() {
+        return organization != null && auth.orgs().canManage(organization);
+    }
+
+    private void requireViewMember(UserModel member) {
+        if (!auth.users().canView(member) && !canManageMembers()) {
+            throw new ForbiddenException();
+        }
+    }
+
+    private void requireManageMember(UserModel member) {
+        if (!auth.users().canManage(member) && !canManageMembers()) {
+            throw new ForbiddenException();
+        }
     }
 
     private UserModel getUser(String id) {

@@ -43,7 +43,11 @@ const OrgLinkProperty = ({
   return t(link.membershipType || "UNMANAGED");
 };
 
-export const IdentityProviders = () => {
+type IdentityProvidersProps = {
+  canManage: boolean;
+};
+
+export const IdentityProviders = ({ canManage }: IdentityProvidersProps) => {
   const { adminClient } = useAdminClient();
   const { t } = useTranslation();
   const { id: orgId } = useParams<EditOrganizationParams>();
@@ -59,11 +63,12 @@ export const IdentityProviders = () => {
   const [open, toggleOpen] = useToggle();
 
   useFetch(
-    async () => adminClient.identityProviders.find({ max: 1 }),
+    async () =>
+      canManage ? adminClient.identityProviders.find({ max: 1 }) : [],
     (providers) => {
       setHasProviders(providers.length === 1);
     },
-    [],
+    [canManage],
   );
 
   const loader = async () => {
@@ -106,7 +111,7 @@ export const IdentityProviders = () => {
           }}
         />
       )}
-      {!hasProviders ? (
+      {canManage && !hasProviders ? (
         <ListEmptyState
           icon={BellIcon}
           message={t("noIdentityProvider")}
@@ -119,48 +124,57 @@ export const IdentityProviders = () => {
           ariaLabelKey="identityProviders"
           searchPlaceholderKey="searchProvider"
           toolbarItem={
-            <ToolbarItem>
-              <Button
-                onClick={() => {
-                  setSelectedRow(undefined);
-                  toggleOpen();
-                }}
-              >
-                {t("linkIdentityProvider")}
-              </Button>
-            </ToolbarItem>
-          }
-          actions={[
-            {
-              title: t("edit"),
-              onRowClick: (row) => {
-                setSelectedRow(row);
-                toggleOpen();
-              },
-            },
-            {
-              title: t("unLinkIdentityProvider"),
-              onRowClick: (row) => {
-                setSelectedRow(row);
-                toggleUnlinkDialog();
-              },
-            },
-          ]}
-          columns={[
-            {
-              name: "alias",
-              cellRenderer: (row) => (
+            canManage && (
+              <ToolbarItem>
                 <Button
-                  variant="link"
-                  isInline
                   onClick={() => {
-                    setSelectedRow(row);
+                    setSelectedRow(undefined);
                     toggleOpen();
                   }}
                 >
-                  {row.alias}
+                  {t("linkIdentityProvider")}
                 </Button>
-              ),
+              </ToolbarItem>
+            )
+          }
+          actions={
+            canManage
+              ? [
+                  {
+                    title: t("edit"),
+                    onRowClick: (row) => {
+                      setSelectedRow(row);
+                      toggleOpen();
+                    },
+                  },
+                  {
+                    title: t("unLinkIdentityProvider"),
+                    onRowClick: (row) => {
+                      setSelectedRow(row);
+                      toggleUnlinkDialog();
+                    },
+                  },
+                ]
+              : undefined
+          }
+          columns={[
+            {
+              name: "alias",
+              cellRenderer: (row) =>
+                !canManage ? (
+                  (row.alias ?? "")
+                ) : (
+                  <Button
+                    variant="link"
+                    isInline
+                    onClick={() => {
+                      setSelectedRow(row);
+                      toggleOpen();
+                    }}
+                  >
+                    {row.alias}
+                  </Button>
+                ),
             },
             {
               name: "providerId",
@@ -205,7 +219,9 @@ export const IdentityProviders = () => {
             <ListEmptyState
               message={t("emptyIdentityProviderLink")}
               instructions={t("emptyIdentityProviderLinkInstructions")}
-              primaryActionText={t("linkIdentityProvider")}
+              primaryActionText={
+                canManage ? t("linkIdentityProvider") : undefined
+              }
               onPrimaryAction={toggleOpen}
             />
           }

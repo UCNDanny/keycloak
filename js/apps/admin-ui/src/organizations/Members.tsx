@@ -6,7 +6,14 @@ import {
   ListEmptyState,
   useAlerts,
 } from "@keycloak/keycloak-ui-shared";
-import { Button, ToolbarItem } from "@patternfly/react-core";
+import {
+  Button,
+  Dropdown,
+  DropdownItem,
+  DropdownList,
+  MenuToggle,
+  ToolbarItem,
+} from "@patternfly/react-core";
 import { cellWidth } from "@patternfly/react-table";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,9 +30,16 @@ import { EditOrganizationParams } from "./routes/EditOrganization";
 import { MembershipTypeToggle } from "./MembershipTypeToggle";
 import { MembershipsModal } from "../groups/MembershipsModal";
 import { GroupResourceContext } from "../context/group-resource/GroupResourceContext";
+import { useAccess } from "../context/access/Access";
+import { InviteMemberModal } from "./InviteMemberModal";
+import { CreateMemberModal } from "./CreateMemberModal";
 
 const UserDetailLink = (user: any) => {
   const { realm } = useRealm();
+  const { hasAccess } = useAccess();
+  if (!hasAccess("view-users")) {
+    return user.username;
+  }
   return (
     <Link to={toUser({ realm, id: user.id!, tab: "settings" })}>
       {user.username}
@@ -33,14 +47,23 @@ const UserDetailLink = (user: any) => {
   );
 };
 
-export const Members = () => {
+type MembersProps = {
+  canManage: boolean;
+};
+
+export const Members = ({ canManage }: MembersProps) => {
   const { t } = useTranslation();
   const { adminClient } = useAdminClient();
   const { id: orgId } = useParams<EditOrganizationParams>();
   const { addAlert, addError } = useAlerts();
+  const { hasAccess } = useAccess();
+  const canAddRealmUsers = hasAccess("query-users");
   const [key, setKey] = useState(0);
   const refresh = () => setKey(key + 1);
   const [openAddMembers, toggleAddMembers] = useToggle();
+  const [openInviteMember, toggleInviteMember] = useToggle();
+  const [openCreateMember, toggleCreateMember] = useToggle();
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<UserRepresentation[]>(
     [],
   );
@@ -158,6 +181,18 @@ export const Members = () => {
           }}
         />
       )}
+      {openInviteMember && (
+        <InviteMemberModal orgId={orgId} onClose={toggleInviteMember} />
+      )}
+      {openCreateMember && (
+        <CreateMemberModal
+          orgId={orgId}
+          onClose={() => {
+            toggleCreateMember();
+            refresh();
+          }}
+        />
+      )}
       {showMemberships && (
         <GroupResourceContext value={adminClient.organizations.groups(orgId)}>
           <MembershipsModal
@@ -174,8 +209,10 @@ export const Members = () => {
         loader={loader}
         isPaginated
         ariaLabelKey="membersList"
-        onSelect={(members) => setSelectedMembers([...members])}
-        canSelectAll
+        onSelect={
+          canManage ? (members) => setSelectedMembers([...members]) : undefined
+        }
+        canSelectAll={canManage}
         toolbarItem={
           <>
             <ToolbarItem>
@@ -188,20 +225,69 @@ export const Members = () => {
                 aria-label={t("searchMembers")}
               />
             </ToolbarItem>
-            <ToolbarItem>
-              <Button variant="primary" onClick={toggleAddMembers}>
-                {t("addMember")}
-              </Button>
-            </ToolbarItem>
-            <ToolbarItem>
-              <Button
-                variant="plain"
-                isDisabled={selectedMembers.length === 0}
-                onClick={() => removeMember(selectedMembers)}
-              >
-                {t("removeMember")}
-              </Button>
-            </ToolbarItem>
+            {canManage && (
+              <>
+                <ToolbarItem>
+                  <Dropdown
+                    onOpenChange={setIsAddMenuOpen}
+                    toggle={(ref) => (
+                      <MenuToggle
+                        ref={ref}
+                        id="add-member-toggle"
+                        data-testid="add-member-toggle"
+                        variant="primary"
+                        onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                        isExpanded={isAddMenuOpen}
+                      >
+                        {t("addMember")}
+                      </MenuToggle>
+                    )}
+                    isOpen={isAddMenuOpen}
+                  >
+                    <DropdownList>
+                      {canAddRealmUsers && (
+                        <DropdownItem
+                          key="add-realm-user"
+                          onClick={() => {
+                            setIsAddMenuOpen(false);
+                            toggleAddMembers();
+                          }}
+                        >
+                          {t("addRealmUser")}
+                        </DropdownItem>
+                      )}
+                      <DropdownItem
+                        key="invite-member"
+                        onClick={() => {
+                          setIsAddMenuOpen(false);
+                          toggleInviteMember();
+                        }}
+                      >
+                        {t("inviteMember")}
+                      </DropdownItem>
+                      <DropdownItem
+                        key="create-member"
+                        onClick={() => {
+                          setIsAddMenuOpen(false);
+                          toggleCreateMember();
+                        }}
+                      >
+                        {t("createMember")}
+                      </DropdownItem>
+                    </DropdownList>
+                  </Dropdown>
+                </ToolbarItem>
+                <ToolbarItem>
+                  <Button
+                    variant="plain"
+                    isDisabled={selectedMembers.length === 0}
+                    onClick={() => removeMember(selectedMembers)}
+                  >
+                    {t("removeMember")}
+                  </Button>
+                </ToolbarItem>
+              </>
+            )}
             <ToolbarItem>
               <CheckboxFilterComponent
                 filterPlaceholderText={t("filterByMembershipType")}
@@ -217,12 +303,16 @@ export const Members = () => {
           </>
         }
         actions={[
-          {
-            title: t("remove"),
-            onRowClick: async (member) => {
-              await removeMember([member]);
-            },
-          },
+          ...(canManage
+            ? [
+                {
+                  title: t("remove"),
+                  onRowClick: async (member: UserRepresentation) => {
+                    await removeMember([member]);
+                  },
+                } as Action<UserRepresentation>,
+              ]
+            : []),
           {
             title: t("showGroupMemberships"),
             onRowClick: (member) => {
@@ -256,6 +346,7 @@ export const Members = () => {
                 userId={member.id!}
                 name={member.username}
                 isManaged={member.membershipType === "MANAGED"}
+                isDisabled={!canManage}
               />
             ),
           },
@@ -264,12 +355,28 @@ export const Members = () => {
           <ListEmptyState
             message={t("emptyMembers")}
             instructions={t("emptyMembersInstructions")}
-            secondaryActions={[
-              {
-                text: t("addRealmUser"),
-                onClick: toggleAddMembers,
-              },
-            ]}
+            secondaryActions={
+              canManage
+                ? [
+                    ...(canAddRealmUsers
+                      ? [
+                          {
+                            text: t("addRealmUser"),
+                            onClick: toggleAddMembers,
+                          },
+                        ]
+                      : []),
+                    {
+                      text: t("inviteMember"),
+                      onClick: toggleInviteMember,
+                    },
+                    {
+                      text: t("createMember"),
+                      onClick: toggleCreateMember,
+                    },
+                  ]
+                : undefined
+            }
           />
         }
         isSearching={
