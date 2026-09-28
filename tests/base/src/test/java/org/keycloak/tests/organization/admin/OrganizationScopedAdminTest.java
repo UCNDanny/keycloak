@@ -209,6 +209,16 @@ public class OrganizationScopedAdminTest {
         }
         assertEquals(1, realm.admin().organizations().get(orgAId).toRepresentation().getDomains().size());
 
+        // leaving out the domains would remove them all
+        OrganizationRepresentation current = orgA.toRepresentation();
+        rep = new OrganizationRepresentation();
+        rep.setName(current.getName());
+        rep.setAlias(current.getAlias());
+        try (Response response = orgA.update(rep)) {
+            assertEquals(Response.Status.FORBIDDEN.getStatusCode(), response.getStatus());
+        }
+        assertEquals(1, realm.admin().organizations().get(orgAId).toRepresentation().getDomains().size());
+
         rep = orgA.toRepresentation();
         rep.setAccess(null);
         rep.setDescription("updated description");

@@ -20,6 +20,8 @@ package org.keycloak.organization.admin.resource;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -152,12 +154,9 @@ public class OrganizationResource {
     }
 
     private boolean isDomainsChanged(OrganizationRepresentation organizationRep) {
-        if (organizationRep.getDomains() == null) {
-            return false;
-        }
-
+        // a missing list removes all domains when the representation is applied
         List<OrganizationDomainModel> current = organization.getDomains().toList();
-        List<OrganizationDomainModel> requested = organizationRep.getDomains().stream()
+        List<OrganizationDomainModel> requested = Optional.ofNullable(organizationRep.getDomains()).orElse(Set.of()).stream()
                 .filter(Objects::nonNull)
                 .map(RepresentationToModel::toModel)
                 .toList();
