@@ -39,7 +39,7 @@ export const CreateMemberModal = ({
 
   const submitForm = async (data: CreateMemberForm) => {
     try {
-      await adminClient.organizations.createManagedMember({ orgId, ...data });
+      await adminClient.organizations.createMember({ orgId, ...data });
       addAlert(t("createMemberSuccess"));
       onClose();
     } catch (error) {

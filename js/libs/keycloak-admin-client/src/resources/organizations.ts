@@ -118,12 +118,12 @@ export class Organizations extends Resource<{ realm?: string }> {
     payloadKey: "userId",
   });
 
-  public createManagedMember = this.makeRequest<
+  public createMember = this.makeRequest<
     { orgId: string } & UserRepresentation,
     { id: string }
   >({
     method: "POST",
-    path: "/{orgId}/members/managed",
+    path: "/{orgId}/members/create-user",
     urlParamKeys: ["orgId"],
     returnResourceIdInLocationHeader: { field: "id" },
   });

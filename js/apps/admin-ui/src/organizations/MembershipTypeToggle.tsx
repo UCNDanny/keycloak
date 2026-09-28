@@ -54,9 +54,9 @@ export const MembershipTypeToggle = ({
       labelOff={t("UNMANAGED")}
       aria-label={name ?? t("membershipType")}
       isChecked={checked}
-      // Releasing a managed member is allowed to organization admins, but
-      // making a member managed requires realm-wide rights to manage users.
-      isDisabled={isDisabled || (!checked && !hasAccess("manage-users"))}
+      // Changing the membership type in either direction requires realm-wide
+      // rights to manage users.
+      isDisabled={isDisabled || !hasAccess("manage-users")}
       onChange={(_event, value) => update(value)}
     />
   );

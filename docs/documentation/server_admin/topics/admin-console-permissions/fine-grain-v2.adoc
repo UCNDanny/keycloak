@@ -225,6 +225,10 @@ set of management operations:
 
 Creating new organizations requires `manage` permission on all organizations (the resource type level), not just on a specific organization.
 
+Granting *view* and *manage* on a specific organization, together with the `query-organizations` role, is enough to administer the memberships of that organization
+without any permission on the *Users* resource type. The *manage* scope allows the administrator to list members, remove unmanaged members, invite users, and create new users as unmanaged members of the organization.
+It does not allow editing user accounts, changing membership types, or changing the domains of the organization. For a step-by-step example, see <<_delegating_organization_administration_,Delegating administration of an organization>>.
+
 ==== Enabling admin permissions to a realm
 
 To enable fine-grained admin permissions in a realm, follow these steps:

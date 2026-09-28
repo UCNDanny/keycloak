@@ -1,0 +1,70 @@
+[id="delegating-organization-administration_{context}"]
+
+[[_delegating_organization_administration_]]
+= Delegating administration of an organization
+[role="_abstract"]
+
+You can delegate the administration of one or more organizations to a user who is not a realm administrator, for example
+to let a customer or a business unit manage its own organization. The delegated administrator can manage only the organizations
+they were granted access to, and does not need any realm-wide user roles such as `view-users` or `manage-users`.
+
+Delegation relies on the fine-grained admin permissions feature. The delegated administrator needs:
+
+* The `query-organizations` role from the `realm-management` client, to access the *Organizations* section in the administration console.
+* A permission of the *Organizations* resource type with the *view* and *manage* scopes for the specific organizations.
+
+For more details about fine-grained admin permissions, see <<_fine_grained_permissions,Delegating realm administration using permissions>>.
+
+.Prerequisites
+
+* Admin permissions are enabled for the realm. For more details, see <<_fine_grained_permissions,Delegating realm administration using permissions>>.
+* The organization, for example `acme`, and the user who will administer it, for example `acme-admin`, exist in the realm.
+
+.Procedure
+
+. Click *Permissions* in the menu.
+. Click *Create permission* and select the *Organizations* resource type.
+. Fill in the name, such as `Manage acme organization`.
+. Select the *view* and *manage* authorization scopes.
+. Select *Specific Organizations*, click *Add organizations*, and choose the `acme` organization.
+. Click *Create new policy*.
+. Fill in the name, such as `acme-admins`, select *User* as the policy type, select the user `acme-admin`, and click *Save*.
+. Click *Save* on the *Create permission* page.
+. Click *Users* in the menu and select the user `acme-admin`.
+. Click the *Role mapping* tab.
+. Click *Assign role*, then filter by clients and select the `query-organizations` role of the `realm-management` client.
+. Click *Assign*.
+
+Once the user `acme-admin` logs in to the administration console of the realm (see <<_per_realm_admin_permissions,Dedicated admin consoles>>), the *Organizations* section lists only the organizations
+the user can view. Granting only the *view* scope allows the delegated administrator to see the organization without changing it.
+
+== What a delegated organization administrator can do
+
+A delegated administrator manages the memberships of the organization, not the user accounts of its members.
+With the *view* and *manage* scopes on an organization, the delegated administrator can:
+
+* Update the name, description, redirect URL, and attributes of the organization.
+* List and count the members of the organization, and view each member and their organization group memberships.
+Members are always returned as brief representations, without user attributes.
+* Remove unmanaged members from the organization. This removes only the membership; the user account stays in the realm.
+* Invite users to join the organization by email or by username. When inviting by username, the request succeeds whether or not a user with that username exists,
+so that the response does not reveal which users exist in the realm. The invitation is sent only if the user exists and has an email address.
+* Create a new user as an unmanaged member of the organization by clicking *Add member* and then *Create member* in the *Members* tab.
+If the organization has domains, the email of the new user must match one of them. For more details, see <<managing-organization-members_{context},Managing members>>.
+
+The organization representation returned by the Admin REST API includes an `access` field with the `view` and `manage` flags
+that the calling administrator has for that organization.
+
+== What a delegated organization administrator cannot do
+
+The authority of a delegated administrator comes only from the permission on the specific organization. The `manage-organizations` and `manage-realm` roles
+do not grant access to the members of an organization without the realm-wide user roles.
+Unless granted additional roles or permissions, the delegated administrator cannot:
+
+* Create new organizations. Creating organizations requires the `manage-organizations` role or the *manage* scope for all organizations.
+* Change the domains of the organization. Domains are managed by realm-level organization administrators, who hold the `manage-organizations` or `manage-realm` role.
+* Edit the accounts of members, such as their username, email, credentials, roles, or groups outside of the organization.
+* Change the membership type of a member in either direction. Changing the membership type requires the `manage-users` role, because it changes the lifecycle of the user account.
+* Remove managed members, because removing a managed member also deletes the user account.
+* Access the *Users* section or any other realm resource outside of the organizations they were granted access to.
+* Add existing realm users as members, because that requires the ability to query and view realm users.

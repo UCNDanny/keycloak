@@ -1,5 +1,6 @@
 import {
   FormSubmitButton,
+  KeycloakSpinner,
   useAlerts,
   useFetch,
 } from "@keycloak/keycloak-ui-shared";
@@ -54,7 +55,10 @@ export default function DetailOrganization() {
 
   const form = useForm<OrganizationFormType>();
   const [canManage, setCanManage] = useState(false);
-  const [forbidden, setForbidden] = useState(false);
+  const [forbiddenId, setForbiddenId] = useState<string>();
+  const [loadedId, setLoadedId] = useState<string>();
+  const forbidden = forbiddenId === id;
+  const isLoaded = loadedId === id;
 
   const save = async (org: OrganizationFormType) => {
     try {
@@ -72,7 +76,7 @@ export default function DetailOrganization() {
         return await adminClient.organizations.findOne({ id });
       } catch (error) {
         if (error instanceof NetworkError && error.response.status === 403) {
-          setForbidden(true);
+          setForbiddenId(id);
           return null;
         }
         throw error;
@@ -92,6 +96,7 @@ export default function DetailOrganization() {
         serverDomains: org.domains,
         attributes: arrayToKeyValue(org.attributes),
       });
+      setLoadedId(id);
     },
     [id],
   );
@@ -113,11 +118,17 @@ export default function DetailOrganization() {
   const identityProvidersTab = useTab("identityProviders");
   const eventsTab = useTab("events");
 
-  const { hasAccess } = useAccess();
+  const { hasAccess, hasSomeAccess } = useAccess();
+  const canManageDomains =
+    canManage && hasSomeAccess("manage-organizations", "manage-realm");
   const [activeEventsTab, setActiveEventsTab] = useState("adminEvents");
 
   if (forbidden) {
     return <ForbiddenSection permissionNeeded="view-organizations" />;
+  }
+
+  if (!isLoaded) {
+    return <KeycloakSpinner />;
   }
 
   return (
@@ -173,7 +184,7 @@ export default function DetailOrganization() {
             title={<TabTitleText>{t("domains")}</TabTitleText>}
             {...domainsTab}
           >
-            <DomainsTab canManage={canManage} />
+            <DomainsTab canManage={canManageDomains} />
           </Tab>
           <Tab
             id="attributes"

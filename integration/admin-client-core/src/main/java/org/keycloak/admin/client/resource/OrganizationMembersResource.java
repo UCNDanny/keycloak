@@ -207,6 +207,18 @@ public interface OrganizationMembersResource {
     Response inviteExistingUser(@FormParam("id") String id);
 
     /**
+     * Invites an existing user to the organization, using the specified username.
+     *
+     * @param username the username of the user to invite
+     * @since Keycloak server 26.8.0
+     * @return response
+     */
+    @POST
+    @Path("invite-existing-user")
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+    Response inviteExistingUserByUsername(@FormParam("username") String username);
+
+    /**
      * @since Keycloak server 26
      * @return count of members of the organization
      */

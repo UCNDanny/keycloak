@@ -14,7 +14,7 @@ import {
   MenuToggle,
   ToolbarItem,
 } from "@patternfly/react-core";
-import { cellWidth } from "@patternfly/react-table";
+import { IRowData, cellWidth } from "@patternfly/react-table";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -58,15 +58,18 @@ export const Members = ({ canManage }: MembersProps) => {
   const { addAlert, addError } = useAlerts();
   const { hasAccess } = useAccess();
   const canAddRealmUsers = hasAccess("query-users");
+  const canManageUsers = hasAccess("manage-users");
+  const canRemove = (member: OrganizationMemberRepresentation) =>
+    canManage && (canManageUsers || member.membershipType !== "MANAGED");
   const [key, setKey] = useState(0);
   const refresh = () => setKey(key + 1);
   const [openAddMembers, toggleAddMembers] = useToggle();
   const [openInviteMember, toggleInviteMember] = useToggle();
   const [openCreateMember, toggleCreateMember] = useToggle();
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
-  const [selectedMembers, setSelectedMembers] = useState<UserRepresentation[]>(
-    [],
-  );
+  const [selectedMembers, setSelectedMembers] = useState<
+    OrganizationMemberRepresentation[]
+  >([]);
   const [searchText, setSearchText] = useState<string>("");
   const [searchTriggerText, setSearchTriggerText] = useState<string>("");
   const [filteredMembershipTypes, setFilteredMembershipTypes] = useState<
@@ -280,7 +283,10 @@ export const Members = ({ canManage }: MembersProps) => {
                 <ToolbarItem>
                   <Button
                     variant="plain"
-                    isDisabled={selectedMembers.length === 0}
+                    isDisabled={
+                      selectedMembers.length === 0 ||
+                      !selectedMembers.every(canRemove)
+                    }
                     onClick={() => removeMember(selectedMembers)}
                   >
                     {t("removeMember")}
@@ -302,25 +308,29 @@ export const Members = ({ canManage }: MembersProps) => {
             </ToolbarItem>
           </>
         }
-        actions={[
-          ...(canManage
-            ? [
-                {
-                  title: t("remove"),
-                  onRowClick: async (member: UserRepresentation) => {
-                    await removeMember([member]);
+        actionResolver={(row: IRowData) => {
+          const member: OrganizationMemberRepresentation = row.data;
+          const actions: Action<OrganizationMemberRepresentation>[] = [
+            ...(canRemove(member)
+              ? [
+                  {
+                    title: t("remove"),
+                    onClick: async () => {
+                      await removeMember([member]);
+                    },
                   },
-                } as Action<UserRepresentation>,
-              ]
-            : []),
-          {
-            title: t("showGroupMemberships"),
-            onRowClick: (member) => {
-              setSelectedMember(member);
-              toggleShowMemberships();
+                ]
+              : []),
+            {
+              title: t("showGroupMemberships"),
+              onClick: () => {
+                setSelectedMember(member);
+                toggleShowMemberships();
+              },
             },
-          } as Action<UserRepresentation>,
-        ]}
+          ];
+          return actions;
+        }}
         columns={[
           {
             name: "username",

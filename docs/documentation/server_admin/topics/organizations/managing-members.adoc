@@ -10,6 +10,7 @@ from other users in a realm so that you know exactly which users belong to an or
 There are different ways to add, or onboard, a member to an organization:
 
 * Adding an existing realm user as a member
+* Creating a new user as a member
 * Through an identity provider associated with an organization
 * Sending an invitation to create a new account
 * Sending an invitation to an existing user to join an organization
@@ -80,6 +81,26 @@ image:images/organizations-add-realm-user.png[alt="Adding a realm user"]
 Once a user is a member of the organization, that user is able to authenticate to the realm just like a regular user and using
 any credential supported by the realm.
 
+== Creating a member
+
+An administrator can create a new user directly as a member of an organization.
+
+.Procedure
+
+. Click *Add member*.
+. Click *Create member*.
+. Provide a username and, optionally, an email, first name, and last name.
+. Click *Create*.
+
+The new user is an unmanaged member of the organization. If the organization has domains, the email must match one of them.
+For more details, see <<_managed_unmanaged_members_,Managed and unmanaged members>>.
+
+You can also create a member using the Admin REST API:
+
+`POST /admin/realms/{realm}/organizations/{orgId}/members/create-user`
+
+The request body is a user representation. Only the `username`, `email`, `firstName`, `lastName`, and `enabled` fields are taken into account.
+
 == Inviting users
 
 An administrator can email users to join an organization.
@@ -107,6 +128,10 @@ intention to join the organization.
 On the other hand, if no user is associated with the given email address, the steps
 will involve creating a new account through the realm's self-registration flow. In this case, the user is forced
 to provide the same email address used to send the invitation.
+
+You can also invite an existing user by username. In the *Invite member* dialog, select *Username* in *Invite by* and provide the username of the user.
+The invitation is sent to the email address of that user. To avoid revealing which users exist in the realm, the request succeeds even if no user with
+that username exists or the user has no email address, and in that case no invitation is sent.
 
 == Managing invitations
 

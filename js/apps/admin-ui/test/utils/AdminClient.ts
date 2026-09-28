@@ -502,6 +502,23 @@ class AdminClient {
     }
   }
 
+  async findOrganization(
+    name: string,
+    realm: string = this.#client.realmName,
+  ): Promise<OrganizationRepresentation> {
+    await this.#login();
+    const [org] = await this.#client.organizations.find({
+      search: name,
+      exact: true,
+      realm,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- find()[0] is undefined when nothing matches
+    if (!org) {
+      throw new Error(`Organization not found: ${name}`);
+    }
+    return org;
+  }
+
   async #withRealm<T>(realm: string, fn: () => Promise<T>): Promise<T> {
     const savedRealm = this.#client.realmName;
     this.#client.realmName = realm;

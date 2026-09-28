@@ -47,6 +47,7 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.organization.OrganizationProvider;
 import org.keycloak.representations.idm.AbstractUserRepresentation;
 import org.keycloak.representations.idm.AdminEventRepresentation;
+import org.keycloak.representations.idm.ErrorRepresentation;
 import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.MemberRepresentation;
 import org.keycloak.representations.idm.MembershipType;
@@ -708,6 +709,34 @@ public class OrganizationMemberTest extends AbstractOrganizationTest {
         List<String> memberOfOrgs = orga.members().member(member.getId()).getOrganizations(true).stream().map(OrganizationRepresentation::getId).toList();
         assertTrue(memberOfOrgs.contains(orgaId));
         assertTrue(memberOfOrgs.contains(orgbId));
+    }
+
+    @Test
+    public void testManagedMemberCannotJoinAnotherOrganization() {
+        OrganizationResource orga = realm.admin().organizations().get(createOrganization("org-a").getId());
+        OrganizationResource orgb = realm.admin().organizations().get(createOrganization("org-b").getId());
+        MemberRepresentation member = addMember(orga);
+        OrganizationMemberResource memberInOrgA = orga.members().member(member.getId());
+
+        try (Response response = memberInOrgA.updateMembershipType(MembershipType.MANAGED)) {
+            assertThat(response.getStatus(), is(Status.NO_CONTENT.getStatusCode()));
+        }
+
+        // a managed member belongs to a single organization
+        try (Response response = orgb.members().addMember(member.getId())) {
+            assertThat(response.getStatus(), is(Status.BAD_REQUEST.getStatusCode()));
+            assertThat(response.readEntity(ErrorRepresentation.class).getErrorMessage(),
+                    is("User is already a managed member of another organization"));
+        }
+        assertThat(orgb.members().list(-1, -1), empty());
+
+        // once released to an unmanaged membership, the user can join other organizations
+        try (Response response = memberInOrgA.updateMembershipType(MembershipType.UNMANAGED)) {
+            assertThat(response.getStatus(), is(Status.NO_CONTENT.getStatusCode()));
+        }
+        try (Response response = orgb.members().addMember(member.getId())) {
+            assertThat(response.getStatus(), is(Status.CREATED.getStatusCode()));
+        }
     }
 
     @Test

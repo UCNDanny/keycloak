@@ -58,6 +58,20 @@ class OrganizationPermissions implements OrganizationPermissionEvaluator {
     }
 
     @Override
+    public boolean canManageAll() {
+        return root.hasOneAdminRole(AdminRoles.MANAGE_ORGANIZATIONS, AdminRoles.MANAGE_REALM);
+    }
+
+    @Override
+    public boolean hasManagePermission(OrganizationModel organization) {
+        if (organization == null) {
+            return false;
+        }
+
+        return eval.hasPermission(new OrganizationModelRecord(organization), null, AdminPermissionsSchema.MANAGE);
+    }
+
+    @Override
     public void requireManage() {
         if (!canManage()) {
             throw new ForbiddenException();

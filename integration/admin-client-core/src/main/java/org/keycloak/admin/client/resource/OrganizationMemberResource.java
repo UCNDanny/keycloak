@@ -34,12 +34,24 @@ import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.MemberRepresentation;
 import org.keycloak.representations.idm.MembershipType;
 import org.keycloak.representations.idm.OrganizationRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
 
 public interface OrganizationMemberResource {
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     MemberRepresentation toRepresentation();
+
+    /**
+     * Updates this member. Only the username, email, first name, last name, and enabled fields are taken into account.
+     *
+     * @param rep the user representation with the fields to update
+     * @since Keycloak server 26.8.0
+     * @return response
+     */
+    @PUT
+    @Consumes(MediaType.APPLICATION_JSON)
+    Response update(UserRepresentation rep);
 
     @DELETE
     Response delete();

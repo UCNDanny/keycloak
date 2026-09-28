@@ -24,6 +24,19 @@ public interface OrganizationPermissionEvaluator {
 
     boolean canManage(OrganizationModel organization);
 
+    /**
+     * Returns {@code true} if the caller holds a realm-wide organization administration role
+     * ({@code manage-organizations} or {@code manage-realm}), which grants management of all organizations,
+     * including settings that affect the whole realm such as organization domains.
+     */
+    boolean canManageAll();
+
+    /**
+     * Returns {@code true} only if admin permissions (FGAP v2) are enabled for the realm and a permission grants
+     * {@code manage} on the given organization. Admin roles are not taken into account.
+     */
+    boolean hasManagePermission(OrganizationModel organization);
+
     void requireManage();
 
     void requireManage(OrganizationModel organization);
