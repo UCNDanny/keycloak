@@ -210,7 +210,6 @@ public interface OrganizationMembersResource {
      * Invites an existing user to the organization, using the specified username.
      *
      * @param username the username of the user to invite
-     * @since Keycloak server 26.8.0
      * @return response
      */
     @POST
