@@ -28,6 +28,7 @@ test.describe.serial("Organization scoped admin", () => {
 
   test.beforeAll(async () => {
     await adminClient.createRealm(realm, {
+      enabled: true,
       organizationsEnabled: true,
       adminPermissionsEnabled: true,
     });

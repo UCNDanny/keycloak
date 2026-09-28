@@ -34,7 +34,14 @@ export async function login(
 
   await navigateTo(page, to, realm);
   await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
+
+  // Realms with organizations enabled ask for the username and password on separate pages.
+  const passwordField = page.getByLabel("Password", { exact: true });
+  if (!(await passwordField.isVisible())) {
+    await page.getByRole("button", { name: "Sign In" }).click();
+  }
+
+  await passwordField.fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
 }
 

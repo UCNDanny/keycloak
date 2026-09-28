@@ -50,7 +50,7 @@ Members are always returned as brief representations, without user attributes.
 * Invite users to join the organization by email or by username. When inviting by username, the request succeeds whether or not a user with that username exists,
 so that the response does not reveal which users exist in the realm. The invitation is sent only if the user exists and has an email address.
 * Create a new user as an unmanaged member of the organization by clicking *Add member* and then *Create member* in the *Members* tab.
-If the organization has domains, the email of the new user must match one of them. For more details, see <<managing-organization-members_{context},Managing members>>.
+If the organization has domains, the email of the new user must match one of them. For more details, see <<_managing_members_,Managing members>>.
 
 The organization representation returned by the Admin REST API includes an `access` field with the `view` and `manage` flags
 that the calling administrator has for that organization.

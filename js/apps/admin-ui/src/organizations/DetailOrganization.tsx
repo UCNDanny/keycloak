@@ -12,6 +12,7 @@ import {
   Tabs,
   TabTitleText,
 } from "@patternfly/react-core";
+import OrganizationRepresentation from "@keycloak/keycloak-admin-client/lib/defs/organizationRepresentation";
 import { NetworkError } from "@keycloak/keycloak-admin-client";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -45,30 +46,23 @@ import { ForbiddenSection } from "../ForbiddenSection";
 import { AdminEvents } from "../events/AdminEvents";
 import { useState } from "react";
 
+const toFormValues = (
+  org: OrganizationRepresentation,
+): OrganizationFormType => ({
+  ...org,
+  domains: undefined,
+  serverDomains: org.domains,
+  attributes: arrayToKeyValue(org.attributes),
+});
+
 export default function DetailOrganization() {
   const { adminClient } = useAdminClient();
-  const { addAlert, addError } = useAlerts();
-
-  const { realm, realmRepresentation } = useRealm();
   const { id } = useParams<EditOrganizationParams>();
   const { t } = useTranslation();
 
-  const form = useForm<OrganizationFormType>();
-  const [canManage, setCanManage] = useState(false);
+  const [organization, setOrganization] =
+    useState<OrganizationRepresentation>();
   const [forbiddenId, setForbiddenId] = useState<string>();
-  const [loadedId, setLoadedId] = useState<string>();
-  const forbidden = forbiddenId === id;
-  const isLoaded = loadedId === id;
-
-  const save = async (org: OrganizationFormType) => {
-    try {
-      const organization = convertToOrg(org);
-      await adminClient.organizations.updateById({ id }, organization);
-      addAlert(t("organizationSaveSuccess"));
-    } catch (error) {
-      addError("organizationSaveError", error);
-    }
-  };
 
   useFetch(
     async () => {
@@ -89,17 +83,48 @@ export default function DetailOrganization() {
       if (!org) {
         throw new Error(t("notFound"));
       }
-      setCanManage(org.access?.manage ?? false);
-      form.reset({
-        ...org,
-        domains: undefined,
-        serverDomains: org.domains,
-        attributes: arrayToKeyValue(org.attributes),
-      });
-      setLoadedId(id);
+      setOrganization(org);
     },
     [id],
   );
+
+  if (forbiddenId === id) {
+    return <ForbiddenSection permissionNeeded="view-organizations" />;
+  }
+
+  if (organization?.id !== id) {
+    return <KeycloakSpinner />;
+  }
+
+  return <OrganizationDetails key={id} organization={organization} />;
+}
+
+type OrganizationDetailsProps = {
+  organization: OrganizationRepresentation;
+};
+
+const OrganizationDetails = ({ organization }: OrganizationDetailsProps) => {
+  const { adminClient } = useAdminClient();
+  const { addAlert, addError } = useAlerts();
+
+  const { realm, realmRepresentation } = useRealm();
+  const { id } = useParams<EditOrganizationParams>();
+  const { t } = useTranslation();
+
+  const form = useForm<OrganizationFormType>({
+    defaultValues: toFormValues(organization),
+  });
+  const canManage = organization.access?.manage ?? false;
+
+  const save = async (org: OrganizationFormType) => {
+    try {
+      const organization = convertToOrg(org);
+      await adminClient.organizations.updateById({ id }, organization);
+      addAlert(t("organizationSaveSuccess"));
+    } catch (error) {
+      addError("organizationSaveError", error);
+    }
+  };
 
   const useTab = (tab: OrganizationTab) =>
     useRoutableTab(
@@ -122,14 +147,6 @@ export default function DetailOrganization() {
   const canManageDomains =
     canManage && hasSomeAccess("manage-organizations", "manage-realm");
   const [activeEventsTab, setActiveEventsTab] = useState("adminEvents");
-
-  if (forbidden) {
-    return <ForbiddenSection permissionNeeded="view-organizations" />;
-  }
-
-  if (!isLoaded) {
-    return <KeycloakSpinner />;
-  }
 
   return (
     <PageSection variant="light" className="pf-v5-u-p-0">
@@ -264,4 +281,4 @@ export default function DetailOrganization() {
       </FormProvider>
     </PageSection>
   );
-}
+};
