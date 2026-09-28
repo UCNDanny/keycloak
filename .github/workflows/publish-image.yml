@@ -1,0 +1,50 @@
+name: Publish image (org-admin)
+
+on:
+  push:
+    branches: [preview-image-org-admin]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/ucndanny/keycloak-preview:org-admin
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Official 26.7.4 plus organization-scoped admin; main would ship unreleased DB migrations.
+          ref: 26.7.4-org-scoped-admin
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build server distribution
+        run: ./mvnw -B -nsu -pl quarkus/deployment,quarkus/dist -am -DskipTests -DskipProtoLock=true clean install
+
+      - name: Set up multi-platform builds
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          docker buildx create --use
+
+      - name: Build and push image
+        working-directory: quarkus/container
+        run: |
+          cp ../dist/target/keycloak-*.tar.gz .
+          DIST=$(ls keycloak-*.tar.gz)
+          docker buildx build --push \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg KEYCLOAK_DIST="$DIST" \
+            --label org.opencontainers.image.source=https://github.com/UCNDanny/keycloak \
+            --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
+            -t "$IMAGE" .
