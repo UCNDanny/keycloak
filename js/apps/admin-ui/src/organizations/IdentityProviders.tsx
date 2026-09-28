@@ -21,6 +21,7 @@ import { useAdminClient } from "../admin-client";
 import { useConfirmDialog } from "../components/confirm-dialog/ConfirmDialog";
 import { ManageOrderDialog } from "../identity-providers/ManageOrderDialog";
 import { toIdentityProvider } from "../identity-providers/routes/IdentityProvider";
+import { useAccess } from "../context/access/Access";
 import { useRealm } from "../context/realm-context/RealmContext";
 import useToggle from "../utils/useToggle";
 import { LinkIdentityProviderModal } from "./LinkIdentityProviderModal";
@@ -29,11 +30,13 @@ import { EditOrganizationParams } from "./routes/EditOrganization";
 type ShownOnLoginPageCheckProps = {
   row: IdentityProviderRepresentation;
   refresh: () => void;
+  isDisabled: boolean;
 };
 
 const ShownOnLoginPageCheck = ({
   row,
   refresh,
+  isDisabled,
 }: ShownOnLoginPageCheckProps) => {
   const { adminClient } = useAdminClient();
   const { addAlert, addError } = useAlerts();
@@ -61,17 +64,25 @@ const ShownOnLoginPageCheck = ({
       label={t("on")}
       labelOff={t("off")}
       isChecked={row.hideOnLogin}
+      isDisabled={isDisabled}
       onChange={(_, value) => toggle(value)}
     />
   );
 };
 
-export const IdentityProviders = () => {
+type IdentityProvidersProps = {
+  canManage: boolean;
+};
+
+export const IdentityProviders = ({ canManage }: IdentityProvidersProps) => {
   const { adminClient } = useAdminClient();
   const { t } = useTranslation();
   const { id: orgId } = useParams<EditOrganizationParams>();
   const { realm } = useRealm();
   const { addAlert, addError } = useAlerts();
+  const { hasAccess } = useAccess();
+  const canViewProviders = hasAccess("view-identity-providers");
+  const canManageProviders = hasAccess("manage-identity-providers");
 
   const [key, setKey] = useState(0);
   const refresh = () => setKey(key + 1);
@@ -83,11 +94,12 @@ export const IdentityProviders = () => {
   const [open, toggleOpen] = useToggle();
 
   useFetch(
-    async () => adminClient.identityProviders.find({ max: 1 }),
+    async () =>
+      canManage ? adminClient.identityProviders.find({ max: 1 }) : [],
     (providers) => {
       setHasProviders(providers.length === 1);
     },
-    [],
+    [canManage],
   );
 
   const loader = async () => {
@@ -140,7 +152,7 @@ export const IdentityProviders = () => {
             }}
           />
         )}
-        {!hasProviders ? (
+        {canManage && !hasProviders ? (
           <ListEmptyState
             icon={BellIcon}
             message={t("noIdentityProvider")}
@@ -153,59 +165,68 @@ export const IdentityProviders = () => {
             ariaLabelKey="identityProviders"
             searchPlaceholderKey="searchProvider"
             toolbarItem={
-              <>
-                <ToolbarItem>
-                  <Button
-                    onClick={() => {
-                      setSelectedRow(undefined);
-                      toggleOpen();
-                    }}
-                  >
-                    {t("linkIdentityProvider")}
-                  </Button>
-                </ToolbarItem>
-                <ToolbarItem>
-                  <Button
-                    data-testid="manageDisplayOrder"
-                    variant="link"
-                    onClick={() => setManageDisplayDialog(true)}
-                  >
-                    {t("manageDisplayOrder")}
-                  </Button>
-                </ToolbarItem>
-              </>
+              canManage && (
+                <>
+                  <ToolbarItem>
+                    <Button
+                      onClick={() => {
+                        setSelectedRow(undefined);
+                        toggleOpen();
+                      }}
+                    >
+                      {t("linkIdentityProvider")}
+                    </Button>
+                  </ToolbarItem>
+                  <ToolbarItem>
+                    <Button
+                      data-testid="manageDisplayOrder"
+                      variant="link"
+                      onClick={() => setManageDisplayDialog(true)}
+                    >
+                      {t("manageDisplayOrder")}
+                    </Button>
+                  </ToolbarItem>
+                </>
+              )
             }
-            actions={[
-              {
-                title: t("edit"),
-                onRowClick: (row) => {
-                  setSelectedRow(row);
-                  toggleOpen();
-                },
-              },
-              {
-                title: t("unLinkIdentityProvider"),
-                onRowClick: (row) => {
-                  setSelectedRow(row);
-                  toggleUnlinkDialog();
-                },
-              },
-            ]}
+            actions={
+              canManage
+                ? [
+                    {
+                      title: t("edit"),
+                      onRowClick: (row) => {
+                        setSelectedRow(row);
+                        toggleOpen();
+                      },
+                    },
+                    {
+                      title: t("unLinkIdentityProvider"),
+                      onRowClick: (row) => {
+                        setSelectedRow(row);
+                        toggleUnlinkDialog();
+                      },
+                    },
+                  ]
+                : undefined
+            }
             columns={[
               {
                 name: "alias",
-                cellRenderer: (row) => (
-                  <Link
-                    to={toIdentityProvider({
-                      realm,
-                      providerId: row.providerId!,
-                      alias: row.alias!,
-                      tab: "settings",
-                    })}
-                  >
-                    {row.alias}
-                  </Link>
-                ),
+                cellRenderer: (row) =>
+                  !canViewProviders ? (
+                    (row.alias ?? "")
+                  ) : (
+                    <Link
+                      to={toIdentityProvider({
+                        realm,
+                        providerId: row.providerId!,
+                        alias: row.alias!,
+                        tab: "settings",
+                      })}
+                    >
+                      {row.alias}
+                    </Link>
+                  ),
               },
               {
                 name: "config['kc.org.domain']",
@@ -219,7 +240,11 @@ export const IdentityProviders = () => {
                 name: "hideOnLogin",
                 displayKey: "hideOnLoginPage",
                 cellRenderer: (row) => (
-                  <ShownOnLoginPageCheck row={row} refresh={refresh} />
+                  <ShownOnLoginPageCheck
+                    row={row}
+                    refresh={refresh}
+                    isDisabled={!canManageProviders}
+                  />
                 ),
               },
             ]}
@@ -227,7 +252,9 @@ export const IdentityProviders = () => {
               <ListEmptyState
                 message={t("emptyIdentityProviderLink")}
                 instructions={t("emptyIdentityProviderLinkInstructions")}
-                primaryActionText={t("linkIdentityProvider")}
+                primaryActionText={
+                  canManage ? t("linkIdentityProvider") : undefined
+                }
                 onPrimaryAction={toggleOpen}
               />
             }

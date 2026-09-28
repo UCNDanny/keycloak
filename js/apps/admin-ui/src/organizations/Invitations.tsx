@@ -24,6 +24,7 @@ import { EditOrganizationParams } from "./routes/EditOrganization";
 import { SearchInputComponent } from "../components/dynamic/SearchInputComponent";
 import { useConfirmDialog } from "../components/confirm-dialog/ConfirmDialog";
 import useFormatDate from "../utils/useFormatDate";
+import { useAccess } from "../context/access/Access";
 
 const InvitationStatusBadge = ({
   status,
@@ -58,6 +59,8 @@ export const Invitations = () => {
   const { adminClient } = useAdminClient();
   const { id: orgId } = useParams<EditOrganizationParams>();
   const { addAlert, addError } = useAlerts();
+  const { hasAccess } = useAccess();
+  const canInviteRealmUser = hasAccess("query-users");
   const [key, setKey] = useState(0);
   const refresh = () => setKey(key + 1);
   const [openInviteMembers, toggleInviteMembers] = useToggle();
@@ -256,15 +259,17 @@ export const Invitations = () => {
                   >
                     {t("inviteNewUser")}
                   </DropdownItem>
-                  <DropdownItem
-                    key="invite-realm-user"
-                    onClick={() => {
-                      setIsInviteMenuOpen(false);
-                      toggleInviteRealmUser();
-                    }}
-                  >
-                    {t("inviteRealmUser")}
-                  </DropdownItem>
+                  {canInviteRealmUser && (
+                    <DropdownItem
+                      key="invite-realm-user"
+                      onClick={() => {
+                        setIsInviteMenuOpen(false);
+                        toggleInviteRealmUser();
+                      }}
+                    >
+                      {t("inviteRealmUser")}
+                    </DropdownItem>
+                  )}
                 </DropdownList>
               </Dropdown>
             </ToolbarItem>
@@ -355,10 +360,14 @@ export const Invitations = () => {
                 text: t("inviteNewUser"),
                 onClick: toggleInviteMembers,
               },
-              {
-                text: t("inviteRealmUser"),
-                onClick: toggleInviteRealmUser,
-              },
+              ...(canInviteRealmUser
+                ? [
+                    {
+                      text: t("inviteRealmUser"),
+                      onClick: toggleInviteRealmUser,
+                    },
+                  ]
+                : []),
             ]}
           />
         }

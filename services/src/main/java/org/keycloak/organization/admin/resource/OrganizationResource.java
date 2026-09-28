@@ -17,7 +17,11 @@
 
 package org.keycloak.organization.admin.resource;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -33,6 +37,7 @@ import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ModelValidationException;
+import org.keycloak.models.OrganizationDomainModel;
 import org.keycloak.models.OrganizationModel;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
@@ -85,7 +90,13 @@ public class OrganizationResource {
         @APIResponse(responseCode = "403", description = "Forbidden")
     })
     public OrganizationRepresentation get() {
-        return ModelToRepresentation.toRepresentation(organization, false);
+        return toRepresentation(organization, false, auth);
+    }
+
+    static OrganizationRepresentation toRepresentation(OrganizationModel organization, boolean briefRepresentation, AdminPermissionEvaluator auth) {
+        OrganizationRepresentation rep = ModelToRepresentation.toRepresentation(organization, briefRepresentation);
+        rep.setAccess(Map.of("view", auth.orgs().canView(organization), "manage", auth.orgs().canManage(organization)));
+        return rep;
     }
 
     @DELETE
@@ -119,6 +130,13 @@ public class OrganizationResource {
     })
     public Response update(OrganizationRepresentation organizationRep) {
         auth.orgs().requireManage(organization);
+
+        // domains drive realm-wide behavior such as identity-first login and automatic membership through identity
+        // providers, so only realm-wide organization administrators can change them
+        if (!auth.orgs().canManageAll() && isDomainsChanged(organizationRep)) {
+            throw ErrorResponse.error("Not allowed to change the domains of the organization", Status.FORBIDDEN);
+        }
+
         // attempt to change organization name to an existing organization name
         if (!Objects.equals(organization.getName(), organizationRep.getName()) &&
                 provider.getAllStream(organizationRep.getName(), true, -1, -1).findAny().isPresent()) {
@@ -133,6 +151,23 @@ public class OrganizationResource {
         } catch (ModelValidationException | OrganizationValidationException ex) {
             throw ErrorResponse.error(ex.getMessage(), Response.Status.BAD_REQUEST);
         }
+    }
+
+    private boolean isDomainsChanged(OrganizationRepresentation organizationRep) {
+        // a missing list removes all domains when the representation is applied
+        List<OrganizationDomainModel> current = organization.getDomains().toList();
+        List<OrganizationDomainModel> requested = Optional.ofNullable(organizationRep.getDomains()).orElse(Set.of()).stream()
+                .filter(Objects::nonNull)
+                .map(RepresentationToModel::toModel)
+                .toList();
+
+        if (current.size() != requested.size()) {
+            return true;
+        }
+
+        return requested.stream().anyMatch(domain -> current.stream().noneMatch(existing ->
+                Objects.equals(existing.getName(), domain.getName())
+                        && existing.isVerified() == domain.isVerified()));
     }
 
     @Path("members")

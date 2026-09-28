@@ -23,7 +23,6 @@ import java.util.stream.Stream;
 
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -147,27 +146,38 @@ public class OrganizationInvitationResource {
         return sendInvitation(user);
     }
 
-    public Response inviteExistingUser(String id) {
+    public Response inviteExistingUser(String id, String username) {
         auth.orgs().requireManage(organization);
 
         if (!organization.isEnabled()) {
             throw ErrorResponse.error("Organization is disabled", Status.BAD_REQUEST);
         }
 
-        if (StringUtil.isBlank(id)) {
-            throw new BadRequestException("To invite a member you need to provide the user id");
+        if (StringUtil.isBlank(id) == StringUtil.isBlank(username)) {
+            throw new BadRequestException("To invite a member you need to provide either the user id or the username");
         }
 
-        UserModel user = session.users().getUserById(realm, id);
+        UserModel user = StringUtil.isNotBlank(id) ?
+                session.users().getUserById(realm, id) :
+                session.users().getUserByUsername(realm, username.trim());
+        // only admins that can query users learn whether a user exists or has an email; everyone else gets the same
+        // response and the invitation is only sent when it can be delivered
+        boolean disclose = StringUtil.isNotBlank(id) && auth.users().canQuery();
 
         if (user == null) {
-            throw auth.users().canQuery() ?
-                    ErrorResponse.error("User does not exist", Status.BAD_REQUEST) :
-                    new ForbiddenException();
+            if (disclose) {
+                throw ErrorResponse.error("User does not exist", Status.BAD_REQUEST);
+            }
+
+            return Response.noContent().build();
         }
 
         if (StringUtil.isBlank(user.getEmail())) {
-            throw ErrorResponse.error("User does not have an email address", Status.BAD_REQUEST);
+            if (disclose) {
+                throw ErrorResponse.error("User does not have an email address", Status.BAD_REQUEST);
+            }
+
+            return Response.noContent().build();
         }
 
         return sendInvitation(user);

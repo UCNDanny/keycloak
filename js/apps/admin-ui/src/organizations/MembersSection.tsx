@@ -4,7 +4,11 @@ import { useTranslation } from "react-i18next";
 import { Invitations } from "./Invitations";
 import { Members } from "./Members";
 
-export const MembersSection = () => {
+type MembersSectionProps = {
+  canManage: boolean;
+};
+
+export const MembersSection = ({ canManage }: MembersSectionProps) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("members");
 
@@ -18,15 +22,17 @@ export const MembersSection = () => {
         title={<TabTitleText>{t("members")}</TabTitleText>}
         data-testid="organization-members-tab"
       >
-        <Members />
+        <Members canManage={canManage} />
       </Tab>
-      <Tab
-        eventKey="invitations"
-        title={<TabTitleText>{t("invitations")}</TabTitleText>}
-        data-testid="organization-invitations-tab"
-      >
-        <Invitations />
-      </Tab>
+      {canManage && (
+        <Tab
+          eventKey="invitations"
+          title={<TabTitleText>{t("invitations")}</TabTitleText>}
+          data-testid="organization-invitations-tab"
+        >
+          <Invitations />
+        </Tab>
+      )}
     </Tabs>
   );
 };

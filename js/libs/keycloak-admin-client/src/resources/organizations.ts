@@ -101,6 +101,16 @@ export class Organizations extends Resource<{ realm?: string }> {
     payloadKey: "userId",
   });
 
+  public createMember = this.makeRequest<
+    { orgId: string } & UserRepresentation,
+    { id: string }
+  >({
+    method: "POST",
+    path: "/{orgId}/members/create-user",
+    urlParamKeys: ["orgId"],
+    returnResourceIdInLocationHeader: { field: "id" },
+  });
+
   public delMember = this.makeRequest<
     { orgId: string; userId: string },
     string

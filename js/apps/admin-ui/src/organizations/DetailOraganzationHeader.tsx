@@ -11,10 +11,12 @@ import { useRealm } from "../context/realm-context/RealmContext";
 
 type DetailOrganizationHeaderProps = {
   save: () => void;
+  canManage: boolean;
 };
 
 export const DetailOrganizationHeader = ({
   save,
+  canManage,
 }: DetailOrganizationHeaderProps) => {
   const { adminClient } = useAdminClient();
   const { realm } = useRealm();
@@ -64,24 +66,32 @@ export const DetailOrganizationHeader = ({
           <ViewHeader
             titleKey={name || ""}
             divider={false}
-            dropdownItems={[
-              <DropdownItem
-                data-testid="delete-client"
-                key="delete"
-                onClick={toggleDeleteDialog}
-              >
-                {t("delete")}
-              </DropdownItem>,
-            ]}
+            dropdownItems={
+              canManage
+                ? [
+                    <DropdownItem
+                      data-testid="delete-client"
+                      key="delete"
+                      onClick={toggleDeleteDialog}
+                    >
+                      {t("delete")}
+                    </DropdownItem>,
+                  ]
+                : undefined
+            }
             isEnabled={value}
-            onToggle={(value) => {
-              if (!value) {
-                toggleDisableDialog();
-              } else {
-                onChange(value);
-                save();
-              }
-            }}
+            onToggle={
+              canManage
+                ? (value) => {
+                    if (!value) {
+                      toggleDisableDialog();
+                    } else {
+                      onChange(value);
+                      save();
+                    }
+                  }
+                : undefined
+            }
           />
         </>
       )}
